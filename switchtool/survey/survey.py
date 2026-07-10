@@ -14,8 +14,10 @@ class Surveyer:
     _pwr_format: re.Pattern[str]
     _lbl_format: re.Pattern[str]
     _mac_format: re.Pattern[str]
+    _mtu_format: re.Pattern[str]
     _lbl_cmd_port: str
     _pwr_cmd_port: str
+    _mtu_cmd: str
     _cmd_runner: type[
         command.AristaCommandRunner
         | command.BrocadeCommandRunner
@@ -34,6 +36,7 @@ class Surveyer:
         self._mac_cmd_port = "show mac-address ethernet %s"
         self._pwr_cmd = None
         self._lbl_cmd = None
+        self._mtu_cmd = None
         self._vlan_formatter = None
 
     def show_vlan(self, host, vlan_no=None):
@@ -107,7 +110,26 @@ class Surveyer:
             self.user, self.pw, self.enablepw, self.port, cmd, timeout=self.timeout
         )
         out_code, raw_lbl = cmdr.run(host)
-        return dict([(p, el) for p, el in self._lbl_format.findall(raw_lbl)])
+        return dict(
+            [
+                (port, {"Dupl": dupl, "Speed": speed, "Tag": tag, "Comment": name})
+                for port, dupl, speed, tag, name in self._lbl_format.findall(raw_lbl)
+            ]
+        )
+
+    def show_mtu(self, host):
+        """
+        Create a dictionary of the MTU for each port.
+        """
+        if self._mtu_cmd is None:
+            return {}
+
+        cmd = [self._mtu_cmd]
+        cmdr = self._cmd_runner(
+            self.user, self.pw, self.enablepw, self.port, cmd, timeout=self.timeout
+        )
+        out_code, raw_mtu = cmdr.run(host)
+        return dict([(port, mtu) for port, mtu in self._mtu_format.findall(raw_mtu)])
 
     # Let's claim no one needs an enable command by default!
     def check_mode(self, host) -> bool:
@@ -137,9 +159,9 @@ class Surveyer:
         if self._lbl_format is not None:
             lbl = self._lbl_format.findall(raw)
             el = ""
-            for i, j in lbl:
-                if i == port:
-                    el = j
+            for port, dupl, speed, tag, name in lbl:
+                if port == port:
+                    el = name
                     break
         else:
             el = ""
@@ -200,11 +222,12 @@ class RuckusSurveyer(Surveyer):
         r"^[\s]*([\S]*)[\s]*(On|Off)[\s]*(On|Off|Non-PD)[\s]*", re.M
     )
     # Port Link State Dupl Speed Trunk Tag Pvid Pri MAC Name
-    # We want field0 and field10!
+    # We want fields 0, 3, 4, 6, and 10
     _lbl_format = re.compile(
-        r"^[\t ]*([\S]+)[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+([\S]+)",
+        r"^[\t ]*([\S]+)[\t ]+[\S]+[\t ]+[\S]+[\t ]+([\S]+)[\t ]+([\S]+)[\t ]+[\S]+[\t ]+([\S]+)[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+([\S]+)?",
         re.M,
     )
+    _mtu_format = re.compile(r"(?s)(\d+/\d+/\d+).*?MTU\s+(\d+)\s+bytes")
     _cmd_runner = command.RuckusCommandRunner
 
     def __init__(self, user, pw, enablepw, port=22, timeout=None):
@@ -215,6 +238,7 @@ class RuckusSurveyer(Surveyer):
         self._pwr_cmd_port = "show inline power %s"
         self._lbl_cmd = "show interfaces brief"
         self._lbl_cmd_port = "show interfaces brief ethernet %s"
+        self._mtu_cmd = "show interface | include MTU|/"
 
     def show_vlan(self, host, vlan_no=None):
         """Python 2.7 :  for vlan,port_info in vlan_info.iteritems():"""

@@ -67,6 +67,7 @@ What do we have in here?
     _portmap: map from port name to vlan number.
     _power: map from port name to PoE state.
     _labels: map from port name to port name.
+    _mtu: map from port name to port MTU.
 """
 
 
@@ -201,9 +202,15 @@ class Switch:
 
     def labels(self):
         """
-        Return the power information for the switch.
+        Return the label information for the switch.
         """
         return self._labels
+
+    def mtu(self):
+        """
+        Return the MTU information for the switch.
+        """
+        return self._mtu
 
     def set_name(self, port, name):
         # This is a privileged command: do we need/have the enable password?
@@ -338,6 +345,7 @@ class Switch:
         self.find_connections()
         self.load_power()
         self.load_labels()
+        self.load_mtu()
         module_logger.info("Switch information updated")
 
     def update_port(self, port, delay=0.5):
@@ -398,6 +406,10 @@ class Switch:
     def load_labels(self):
         module_logger.info("Loading port-name information")
         self._labels = self._surveyer().show_labels(self.name)
+
+    def load_mtu(self):
+        module_logger.info("Loading port MTU information")
+        self._mtu = self._surveyer().show_mtu(self.name)
 
     def find_port(self, port):
         """

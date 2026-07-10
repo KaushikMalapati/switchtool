@@ -20,6 +20,10 @@ class VlanWidget(QTableWidget):
         "Ethernet Address",
         "PoE State",
         "Comment",
+        "Dupl",
+        "Speed",
+        "Tag",
+        "MTU",
     )
     PORTCOL = 0
     VLANCOL = 1
@@ -59,7 +63,7 @@ class VlanWidget(QTableWidget):
         if new_pwr != self._power[row]:
             self.set_power.emit(port.text(), new_pwr)
 
-    def add_ports(self, ports, vlans, power, labels):
+    def add_ports(self, ports, vlans, power, labels, mtu):
         """
         Add a list of port information to the table
         """
@@ -70,15 +74,15 @@ class VlanWidget(QTableWidget):
                 pwr = power[port]
             else:
                 pwr = ("Off", "Non-PD")
-            if port in labels.keys():
-                lbl = labels[port]
-            else:
-                lbl = ""
-            self.add_port(port, vlans[i], pwr, lbl)
+            self.add_port(
+                port,
+                vlans[i],
+                pwr,
+                labels.get(port, {"Comment": ""}),
+                mtu.get(port, ""),
+            )
 
-    #        self.resizeColumnsToContents()
-
-    def add_port(self, port, vlan, power, label):
+    def add_port(self, port, vlan, power, label, mtu):
         """
         Add a port to the table
         """
@@ -117,14 +121,23 @@ class VlanWidget(QTableWidget):
             b = QTableWidgetItem()
             b.setFlags(QtCore.Qt.NoItemFlags)
             self.setItem(new_row, self.POECOL, b)
-        self._labels[new_row] = label
-        i = QTableWidgetItem(label)
+        self._labels[new_row] = label.get("Comment", "")
+        for k, v in label.items():
+            i = QTableWidgetItem(label.get(k, ""))
+            i.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
+            self.setItem(new_row, self._column_names.index(k), i)
+        self.item(new_row, self._column_names.index("Comment")).setFlags(
+            QtCore.Qt.ItemIsEnabled
+            | QtCore.Qt.ItemIsSelectable
+            | QtCore.Qt.ItemIsEditable
+        )
+        i = QTableWidgetItem(mtu)
         i.setFlags(
             QtCore.Qt.ItemIsEnabled
             | QtCore.Qt.ItemIsSelectable
             | QtCore.Qt.ItemIsEditable
         )
-        self.setItem(new_row, self.CMTCOL, i)
+        self.setItem(new_row, self._column_names.index("MTU"), i)
 
     def add_devices(self, devices):
         """

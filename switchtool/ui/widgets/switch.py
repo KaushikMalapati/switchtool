@@ -251,6 +251,7 @@ class SwitchWidget(QtWidgets.QWidget):
             self._switch.find_vlans(plist),
             self._switch.power(),
             self._switch.labels(),
+            self._switch.mtu(),
         )
         d = self._switch.devices
         switch.add_devices(d)
@@ -279,6 +280,7 @@ class SwitchWidget(QtWidgets.QWidget):
                 self._switch.find_vlans(plist),
                 self._switch.power(),
                 self._switch.labels(),
+                self._switch.mtu(),
             )
             vlan_table.add_devices(vlan._devices)
             vlan_table.add_unknown(vlan._unknown)
