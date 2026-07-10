@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from os import path
 from pathlib import Path
 
@@ -295,32 +296,38 @@ class Switch:
         module_logger.info("Requesting mac addresses from switch")
         mac = self._surveyer().show_mac(self.name)
         module_logger.info("Searching for mac addresses in sdfconfig")
-        for port, address in mac.items():
-            module_logger.debug("Found {:} on port {:}.".format(port, address))
-            vlan_no = self.find_port(port)
-            if not vlan_no:
-                module_logger.debug(
-                    "{:} is a tagged port, ignoring mac address".format(port)
-                )
-                pass
-            else:
-                # Find VLAN
-                vlan_name = self._vlan_alias.format(vlan_no)
-                vlan = getattr(self, vlan_name)
-                try:
-                    node = get_host_for_mac(address.lower())
-                    vlan._devices[node] = {
-                        "ethernet_address": address,
-                        "port": port,
-                        "vlan": vlan_no,
-                    }
-                except (KeyError, RuntimeError):
+        with ThreadPoolExecutor(max_workers=32) as pool:
+            futures = {
+                (port, address): pool.submit(get_host_for_mac, address.lower())
+                for port, address in mac.items()
+            }
+            for (port, address), future in futures.items():
+                module_logger.debug("Found {:} on port {:}.".format(port, address))
+                vlan_no = self.find_port(port)
+                if not vlan_no:
                     module_logger.debug(
-                        "Unable to find sdfconfig entry for {:} on port {:}".format(
-                            address, port
-                        )
+                        "{:} is a tagged port, ignoring mac address".format(port)
                     )
-                    vlan._unknown[address] = {"port": port, "vlan": vlan_no}
+                    pass
+                else:
+                    # Find VLAN
+                    vlan_name = self._vlan_alias.format(vlan_no)
+                    vlan = getattr(self, vlan_name)
+                    try:
+                        # raise KeyError
+                        node = future.result()
+                        vlan._devices[node] = {
+                            "ethernet_address": address,
+                            "port": port,
+                            "vlan": vlan_no,
+                        }
+                    except (KeyError, RuntimeError):
+                        module_logger.debug(
+                            "Unable to find sdfconfig entry for {:} on port {:}".format(
+                                address, port
+                            )
+                        )
+                        vlan._unknown[address] = {"port": port, "vlan": vlan_no}
         module_logger.info("Mac address processing complete")
 
     def update(self):

@@ -153,41 +153,31 @@ class CommandRunner(object):
         return d
 
     def _readline(self):
-        # If we don't have any data, try to read some!
-        while self._rbuffer is None:
-            if self.chan.recv_ready():
-                self._rbuffer = self._recv()
-            else:
-                time.sleep(0.1)
+        if self._rbuffer is None:
+            self._rbuffer = b""
 
         while True:
-            # If there is a newline in our data, return the first chunk.
-            try:
-                idx = self._rbuffer.index(b"\n")
-                r = self._rbuffer[0 : idx + 1].decode("utf-8")
-                if idx == len(self._rbuffer):
-                    self._rbuffer = None
-                else:
-                    self._rbuffer = self._rbuffer[idx + 1 :]
+            # Split on newline
+            idx = self._rbuffer.find(b"\n")
+            if idx >= 0:
+                r = self._rbuffer[: idx + 1].decode("utf-8")
+                self._rbuffer = self._rbuffer[idx + 1 :] or None
                 logger.debug("<<< %s" % r)
                 return r
-            except:
-                # If there isn't a newline, try to read more.  If there
-                # is no more, just return the partial line!
-                didread = False
-                for i in range(6):
-                    if self.chan.recv_ready():
-                        d = self._recv()
-                        self._rbuffer += d
-                        didread = True
-                        break
-                    else:
-                        time.sleep(0.1)
-                if not didread:
-                    r = self._rbuffer.decode("utf-8")
-                    self._rbuffer = None
-                    logger.debug("<<< %s" % r)
-                    return r
+            # Keep receiving until we stop getting new data for some reason
+            try:
+                self._rbuffer += self._recv()
+            except socket.timeout:
+                r = self._rbuffer.decode("utf-8")
+                # Pagination, just continue
+                if "--More--" in r:
+                    self.chan.send(" ")
+                    self._rbuffer = b""
+                    continue
+                # Otherwise assume partial line is prompt
+                self._rbuffer = None
+                logger.debug("<<< %s" % r)
+                return r
 
     def exec_cmd(self, cmd, keepOutput=True):
         seen_echo = False
@@ -199,13 +189,17 @@ class CommandRunner(object):
         while not seen_echo:
             line = self._readline()
             prompt_match = self.prompt_pattern.match(line.rstrip())
-            if prompt_match and prompt_match.group("cmd") == cmd:
+            # prompt can arrive before command echo, check for them independently
+            if prompt_match:
                 logger.debug("Seen prompt and echo")
                 self.mode = prompt_match.group("mode")
+                seen_prompt = True
+            if seen_prompt and cmd in line:
                 seen_echo = True
-            else:
+            if not seen_prompt and not seen_echo:
                 logger.debug(f"Not seen prompt and echo for {self.prompt_pattern}")
 
+        seen_prompt = False
         while not seen_prompt:
             line = self._readline()
             page_cont = self.page_cont_pattern.match(line)
@@ -250,7 +244,7 @@ class CommandRunner(object):
                 )
                 did_connect = True
                 break
-            except:
+            except SSHException:
                 print("SSH connect failed, retry %d!" % i)
         if not did_connect:
             print("SSH connect failed, aborting!")
@@ -258,7 +252,7 @@ class CommandRunner(object):
 
         try:
             self.chan = self.ssh.invoke_shell()
-
+            self.chan.settimeout(0.025)
             self.enter()
             for cmd in self.cmds:
                 output += self.exec_cmd(cmd)
