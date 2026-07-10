@@ -516,6 +516,42 @@ class Switch:
 
         return vlan, subnet
 
+    def enable_disable_port(self, port, enable_disable_value):
+        """
+        Enable or disable a port
+        """
+        if not self._enablepw and self._surveyer().check_mode(self.name):
+            self.get_enablepw()
+
+        commands = ["config terminal"]
+
+        # Find origin of port
+        origin = self.find_port(port)
+
+        # Check if valid port
+        if not origin:
+            module_logger.error("Port {:} is not this switch".format(port))
+            return False
+
+        commands.extend([f"int eth {port}", enable_disable_value, "exit", "exit"])
+        # Run commands
+        cmd = self._surveyer()._cmd_runner(
+            self._user,
+            self._pw,
+            self._enablepw,
+            self._port,
+            commands,
+            timeout=self.timeout,
+            priv=True,
+        )
+
+        try:
+            out_code, resp = cmd.run(self.name)
+        except IOError:
+            module_logger.info("Bad enable password!")
+            self._enablepw = None
+        module_logger.info("Finished running switch commands")
+
     def move_port(self, port, vlan_no, verify=True):
         """
         Move a port to a specified VLAN
