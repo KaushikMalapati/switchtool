@@ -110,12 +110,10 @@ class Surveyer:
             self.user, self.pw, self.enablepw, self.port, cmd, timeout=self.timeout
         )
         out_code, raw_lbl = cmdr.run(host)
-        return dict(
-            [
-                (port, {"Dupl": dupl, "Speed": speed, "Tag": tag, "Comment": name})
-                for port, dupl, speed, tag, name in self._lbl_format.findall(raw_lbl)
-            ]
-        )
+        return {
+            port: {"Dupl": dupl, "Speed": speed, "Tag": tag, "Comment": name}
+            for port, dupl, speed, tag, name in self._lbl_format.findall(raw_lbl)
+        }
 
     def show_mtu(self, host):
         """
