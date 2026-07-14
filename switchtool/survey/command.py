@@ -226,7 +226,7 @@ class CommandRunner(object):
         Runs the command on the passed list of hosts
         """
         # Sigh... now we want to actually see if our prompt is '>' or '#' and enable if needed!
-        self.prompt_pattern = re.compile(self.prompt_temp % (host, "(?P<mode>[#>])"))
+        self.prompt_pattern = re.compile(self.prompt_temp % "(?P<mode>[#>])")
         output = ""
 
         # The connect seems to fail a lot.  Let's see if we can catch this at all
@@ -293,7 +293,7 @@ class AristaCommandRunner(CommandRunner):
             enablepw,
             port,
             cmds,
-            r"^%s(?:\.ARISTA)?%s(?P<cmd>.*)",
+            r"^\S+(?:\.ARISTA)?%s(?P<cmd>.*)",
             "\n",
             timeout,
             private_key,
@@ -326,7 +326,7 @@ class CiscoCommandRunner(CommandRunner):
             enablepw,
             port,
             cmds,
-            "^%s%s(?P<cmd>.*)",
+            r"^\S+%s(?P<cmd>.*)",
             "\n",
             timeout,
             private_key,
@@ -355,7 +355,7 @@ class BrocadeCommandRunner(CommandRunner):
             enablepw,
             port,
             cmds,
-            r"^SSH@%s(?:\([\w-]*\))?%s(?P<cmd>.*)",
+            r"^SSH@\S+(?:\([\w-]*\))?%s(?P<cmd>.*)",
             "\r\n",
             timeout,
             private_key,
@@ -392,7 +392,7 @@ class RuckusCommandRunner(CommandRunner):
             enablepw,
             port,
             cmds,
-            r"^SSH@%s(?:\([-/\w]*\))?%s(?P<cmd>.*)",
+            r"^SSH@\S+(?:\([-/\w]*\))?%s(?P<cmd>.*)",
             "\n",
             timeout,
             private_key,
