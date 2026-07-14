@@ -14,7 +14,9 @@ class Surveyer:
     _pwr_format: re.Pattern[str]
     _lbl_format: re.Pattern[str]
     _mac_format: re.Pattern[str]
-    _mtu_format: re.Pattern[str]
+    _mtu_format: re.Pattern[str] = re.compile(
+        r"(?s)(\d+/\d+/\d+).*?MTU\s+(\d+)\s+bytes"
+    )
     _lbl_cmd_port: str
     _pwr_cmd_port: str
     _mtu_cmd: str
@@ -36,7 +38,7 @@ class Surveyer:
         self._mac_cmd_port = "show mac-address ethernet %s"
         self._pwr_cmd = None
         self._lbl_cmd = None
-        self._mtu_cmd = None
+        self._mtu_cmd = "show interface | include MTU|/"
         self._vlan_formatter = None
 
     def show_vlan(self, host, vlan_no=None):
@@ -225,7 +227,6 @@ class RuckusSurveyer(Surveyer):
         r"^[\t ]*([\S]+)[\t ]+[\S]+[\t ]+[\S]+[\t ]+([\S]+)[\t ]+([\S]+)[\t ]+[\S]+[\t ]+([\S]+)[\t ]+[\S]+[\t ]+[\S]+[\t ]+[\S]+[\t ]+([\S]+)?",
         re.M,
     )
-    _mtu_format = re.compile(r"(?s)(\d+/\d+/\d+).*?MTU\s+(\d+)\s+bytes")
     _cmd_runner = command.RuckusCommandRunner
 
     def __init__(self, user, pw, enablepw, port=22, timeout=None):
@@ -236,7 +237,6 @@ class RuckusSurveyer(Surveyer):
         self._pwr_cmd_port = "show inline power %s"
         self._lbl_cmd = "show interfaces brief"
         self._lbl_cmd_port = "show interfaces brief ethernet %s"
-        self._mtu_cmd = "show interface | include MTU|/"
 
     def show_vlan(self, host, vlan_no=None):
         """Python 2.7 :  for vlan,port_info in vlan_info.iteritems():"""

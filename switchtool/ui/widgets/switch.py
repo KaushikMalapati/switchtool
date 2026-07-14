@@ -21,7 +21,7 @@ class SwitchWidget(QtWidgets.QWidget):
         self, switch, user="admin", pw=None, switch_type=None, timeout=1.0, parent=None
     ):
         super().__init__(parent=parent)
-        self.resize(660, 700)
+        self.resize(775, 700)
 
         self._switch = PyQtSwitch(
             switch,
