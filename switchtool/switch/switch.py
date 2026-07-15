@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from os import path
 from pathlib import Path
 
@@ -66,6 +67,7 @@ What do we have in here?
     _portmap: map from port name to vlan number.
     _power: map from port name to PoE state.
     _labels: map from port name to port name.
+    _mtu: map from port name to port MTU.
 """
 
 
@@ -200,9 +202,15 @@ class Switch:
 
     def labels(self):
         """
-        Return the power information for the switch.
+        Return the label information for the switch.
         """
         return self._labels
+
+    def mtu(self):
+        """
+        Return the MTU information for the switch.
+        """
+        return self._mtu
 
     def set_name(self, port, name):
         # This is a privileged command: do we need/have the enable password?
@@ -295,32 +303,38 @@ class Switch:
         module_logger.info("Requesting mac addresses from switch")
         mac = self._surveyer().show_mac(self.name)
         module_logger.info("Searching for mac addresses in sdfconfig")
-        for port, address in mac.items():
-            module_logger.debug("Found {:} on port {:}.".format(port, address))
-            vlan_no = self.find_port(port)
-            if not vlan_no:
-                module_logger.debug(
-                    "{:} is a tagged port, ignoring mac address".format(port)
-                )
-                pass
-            else:
-                # Find VLAN
-                vlan_name = self._vlan_alias.format(vlan_no)
-                vlan = getattr(self, vlan_name)
-                try:
-                    node = get_host_for_mac(address.lower())
-                    vlan._devices[node] = {
-                        "ethernet_address": address,
-                        "port": port,
-                        "vlan": vlan_no,
-                    }
-                except (KeyError, RuntimeError):
+        with ThreadPoolExecutor(max_workers=32) as pool:
+            futures = {
+                (port, address): pool.submit(get_host_for_mac, address.lower())
+                for port, address in mac.items()
+            }
+            for (port, address), future in futures.items():
+                module_logger.debug("Found {:} on port {:}.".format(port, address))
+                vlan_no = self.find_port(port)
+                if not vlan_no:
                     module_logger.debug(
-                        "Unable to find sdfconfig entry for {:} on port {:}".format(
-                            address, port
-                        )
+                        "{:} is a tagged port, ignoring mac address".format(port)
                     )
-                    vlan._unknown[address] = {"port": port, "vlan": vlan_no}
+                    pass
+                else:
+                    # Find VLAN
+                    vlan_name = self._vlan_alias.format(vlan_no)
+                    vlan = getattr(self, vlan_name)
+                    try:
+                        # raise KeyError
+                        node = future.result()
+                        vlan._devices[node] = {
+                            "ethernet_address": address,
+                            "port": port,
+                            "vlan": vlan_no,
+                        }
+                    except (KeyError, RuntimeError):
+                        module_logger.debug(
+                            "Unable to find sdfconfig entry for {:} on port {:}".format(
+                                address, port
+                            )
+                        )
+                        vlan._unknown[address] = {"port": port, "vlan": vlan_no}
         module_logger.info("Mac address processing complete")
 
     def update(self):
@@ -331,6 +345,7 @@ class Switch:
         self.find_connections()
         self.load_power()
         self.load_labels()
+        self.load_mtu()
         module_logger.info("Switch information updated")
 
     def update_port(self, port, delay=0.5):
@@ -391,6 +406,10 @@ class Switch:
     def load_labels(self):
         module_logger.info("Loading port-name information")
         self._labels = self._surveyer().show_labels(self.name)
+
+    def load_mtu(self):
+        module_logger.info("Loading port MTU information")
+        self._mtu = self._surveyer().show_mtu(self.name)
 
     def find_port(self, port):
         """
@@ -496,6 +515,42 @@ class Switch:
         vlan = self.find_vlan_for_subnet(subnet)
 
         return vlan, subnet
+
+    def enable_disable_port(self, port, enable_disable_value):
+        """
+        Enable or disable a port
+        """
+        if not self._enablepw and self._surveyer().check_mode(self.name):
+            self.get_enablepw()
+
+        commands = ["config terminal"]
+
+        # Find origin of port
+        origin = self.find_port(port)
+
+        # Check if valid port
+        if not origin:
+            module_logger.error("Port {:} is not this switch".format(port))
+            return False
+
+        commands.extend([f"int eth {port}", enable_disable_value, "exit", "exit"])
+        # Run commands
+        cmd = self._surveyer()._cmd_runner(
+            self._user,
+            self._pw,
+            self._enablepw,
+            self._port,
+            commands,
+            timeout=self.timeout,
+            priv=True,
+        )
+
+        try:
+            out_code, resp = cmd.run(self.name)
+        except IOError:
+            module_logger.info("Bad enable password!")
+            self._enablepw = None
+        module_logger.info("Finished running switch commands")
 
     def move_port(self, port, vlan_no, verify=True):
         """

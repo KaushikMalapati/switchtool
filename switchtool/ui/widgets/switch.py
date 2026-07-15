@@ -21,7 +21,7 @@ class SwitchWidget(QtWidgets.QWidget):
         self, switch, user="admin", pw=None, switch_type=None, timeout=1.0, parent=None
     ):
         super().__init__(parent=parent)
-        self.resize(660, 700)
+        self.resize(775, 700)
 
         self._switch = PyQtSwitch(
             switch,
@@ -63,6 +63,8 @@ class SwitchWidget(QtWidgets.QWidget):
         self.configure_button.clicked.connect(self.auto_configure)
         self.write_memory_button = QtWidgets.QPushButton("Write Memory")
         self.write_memory_button.clicked.connect(self.write_memory)
+        self.enable_disable_button = QtWidgets.QPushButton("Enable/Disable")
+        self.enable_disable_button.clicked.connect(self.enable_disable)
 
         self.move_layout = QtWidgets.QHBoxLayout()
         self.move_layout.addWidget(self.refresh_button)
@@ -70,6 +72,7 @@ class SwitchWidget(QtWidgets.QWidget):
         self.move_layout.addWidget(self.move_button)
         self.move_layout.addWidget(self.configure_button)
         self.move_layout.addWidget(self.write_memory_button)
+        self.move_layout.addWidget(self.enable_disable_button)
 
         self.utilities.setLayout(self.move_layout)
 
@@ -251,6 +254,7 @@ class SwitchWidget(QtWidgets.QWidget):
             self._switch.find_vlans(plist),
             self._switch.power(),
             self._switch.labels(),
+            self._switch.mtu(),
         )
         d = self._switch.devices
         switch.add_devices(d)
@@ -279,6 +283,7 @@ class SwitchWidget(QtWidgets.QWidget):
                 self._switch.find_vlans(plist),
                 self._switch.power(),
                 self._switch.labels(),
+                self._switch.mtu(),
             )
             vlan_table.add_devices(vlan._devices)
             vlan_table.add_unknown(vlan._unknown)
@@ -435,6 +440,17 @@ class SwitchWidget(QtWidgets.QWidget):
         Run the "write memory" command to make the switch config persist on boot.
         """
         self._switch.write_memory()
+
+    def enable_disable(self):
+        """
+        Launch dialog to enable or disable port.
+        """
+        dialog = dialogs.EnableDisableDialog(
+            self._switch.ports, self._switch.devices, parent=self
+        )
+        if dialog.exec_():
+            port, enable_disable_value = dialog.current_enable_disable()
+            self._switch.enable_disable_port(port, enable_disable_value)
 
 
 class PyQtSwitch(Switch):
